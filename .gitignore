@@ -1,0 +1,6 @@
+# Editors and macOS
+.DS_Store
+*.swp
+*.swo
+*~
+.worktrees/

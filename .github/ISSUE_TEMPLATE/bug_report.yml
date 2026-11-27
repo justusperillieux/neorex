@@ -1,0 +1,36 @@
+name: Bug report
+description: A problem with the Neorex Lua workspace.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the Rex action or Neovim command, and relevant Neorex setup options.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Neorex commit, Rex version and Neovim version
+      description: Include nvim --version and rex version.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+    validations:
+      required: true
+  - type: textarea
+    id: state
+    attributes:
+      label: Relevant errors or workspace status
+      description: Use rex do neorex_status --json. Remove private paths and other personal details.
+      render: text

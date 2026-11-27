@@ -1,0 +1,23 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  title:
+    name: Conventional Commit title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Validate title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|revert|docs|refactor|test|build|ci|chore|style)(\([^()]+\))?!?: .+$'
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            echo 'Use a Conventional Commit title, for example feat: add a feature'
+            exit 1
+          fi
