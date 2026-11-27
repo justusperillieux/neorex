@@ -12,12 +12,19 @@ local function remote(code)
   return vim.json.decode(result.stdout)
 end
 local ui, pid
+local function probe()
+  local result = vim.system({ vim.v.progpath, '--headless', '-u', 'NONE', '-i', 'NONE', '-l', runtime .. '/scripts/probe.lua', socket }, { text = true, timeout = 2000 }):wait()
+  assert(result.code == 0, result.stderr)
+  return vim.json.decode(result.stdout)
+end
 local ok, err = pcall(function()
+  assert(probe() == false, 'a missing socket must not count as a live editor')
   local started = vim.system({ vim.v.progpath, '--headless', '-u', 'NONE', '-i', 'NONE', '-l', runtime .. '/scripts/start.lua', state_file }, { text = true, timeout = 20000 }):wait()
   assert(started.code == 0, started.stderr)
   pid = vim.json.decode(started.stdout).pid
   assert(pid > 0)
   assert(remote('#vim.api.nvim_list_uis()') == 0, 'server must survive its launcher exiting')
+  assert(probe() == true, 'a listening headless editor must be protected')
   local listed = vim.system({ vim.v.progpath, '--headless', '-u', 'NONE', '-i', 'NONE', '-l', runtime .. '/scripts/list.lua', root }, { text = true }):wait()
   assert(listed.code == 0 and vim.json.decode(listed.stdout)[1].socket == socket, 'list retained native editors')
   local function attach()
@@ -45,6 +52,7 @@ local ok, err = pcall(function()
   vim.fn.jobstop(ui); ui = nil
   assert(vim.wait(3000, function() return remote('1') == nil end, 20), 'clean server must exit after the last UI closes')
   assert(vim.fn.filereadable(state_file .. '.ready') == 0)
+  assert(probe() == false, 'an exited editor must not block future launches')
 end)
 if ui then vim.fn.jobstop(ui) end
 if remote('1') then

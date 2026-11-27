@@ -17,6 +17,9 @@ rex = {
   exec = function(argv)
     assert(not position(argv, 'status') and not position(argv, 'attach'), 'must not invoke the old Neorex binary')
     if position(argv, '/usr/bin/id') then return { ok = true, stdout = '501\n' } end
+    if position(argv, runtime .. '/scripts/probe.lua') then
+      return { ok = true, stdout = vim.json.encode(running[argv[#argv]] == true) }
+    end
     if position(argv, '-l') then
       local state = vim.json.decode(table.concat(vim.fn.readfile(argv[#argv]), '\n'))
       assert(state.mode == 'native' and state.apply_rex_theme == true)
@@ -27,6 +30,13 @@ rex = {
     if server then
       local socket, expression = argv[server + 1], argv[#argv]
       if expression == '1' then return { ok = not busy and running[socket] == true, stdout = '1', stderr = 'not running' } end
+      if expression:find('nvim_list_uis', 1, true) then
+        local attached = 0
+        for _, block in ipairs(blocks) do
+          if block.socket == socket and (not block.process or block.process == 'nvim') then attached = attached + 1 end
+        end
+        return { ok = true, stdout = tostring(attached) }
+      end
       if expression:find("vim.cmd", 1, true) then
         running[socket] = false
         for index = #blocks, 1, -1 do if blocks[index].socket == socket then table.remove(blocks, index) end end
@@ -55,7 +65,9 @@ rex = {
       end
       return { windows = windows }
     elseif method == 'session.list_blocks' then return { blocks = blocks }
-    elseif method == 'com.superlogical.terminal.process' then return { foreground = { cwd = root } }
+    elseif method == 'com.superlogical.terminal.process' then
+      local block = find(args.block_id)
+      return { foreground = { cwd = root, name = block and block.process or (block and block.socket and 'nvim' or 'zsh') } }
     elseif method == 'session.new_split' then
       local command = args.layout.block.options.command
       assert(position(command, '--remote-ui'), 'must use the built-in Neovim remote UI')
@@ -88,16 +100,28 @@ find(first.block).label = 'My editor'
 assert(module.perform(one, 'toggle').shown == false)
 assert(find(first.block).label == 'My editor', 'preserve custom pane titles')
 assert(module.perform(one, 'toggle').block == first.block and launches == 2, 'restore the same UI and server')
+-- Rex can restore a saved editor pane as a shell while its server survives.
+find(first.block).process = 'zsh'
+local reattached = module.perform(one, 'toggle')
+assert(reattached.block ~= first.block and launches == 2, 'attach the surviving server instead of toggling a restored shell')
+assert(find(first.block), 'a restored terminal must be left untouched')
+first = reattached
+-- A saved pane can also outlive a server; a remembered PID must not block restart.
+running[find(first.block).socket] = false
+local restarted = module.perform(one, 'toggle')
+assert(restarted.block ~= first.block and launches == 3, 'a stale editor pane must not prevent a fresh launch')
+assert(find(first.block), 'do not close the stale terminal while replacing the editor')
+first = restarted
 dirty = true
 local ok, err = pcall(module.perform, one, 'close')
 assert(not ok and tostring(err):find('unsaved') and find(first.block), 'refuse closing modified work')
 rex.call('block.close', { block_id = first.block })
 busy = true
 ok, err = pcall(module.perform, one, 'toggle')
-assert(not ok and tostring(err):find('busy') and launches == 2, 'an unresponsive live editor must not be replaced')
+assert(not ok and tostring(err):find('busy') and launches == 3, 'an unresponsive live editor must not be replaced')
 busy = false
 local recovered = module.perform(one, 'toggle')
-assert(recovered.block ~= first.block and launches == 2, 'recover the existing native server after the UI closes')
+assert(recovered.block ~= first.block and launches == 3, 'recover the existing native server after the UI closes')
 assert(module.perform(one, 'status').running)
 dirty = false
 module.perform(one, 'close')

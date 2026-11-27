@@ -67,6 +67,10 @@ cursor, undo history and language servers keep running while hidden.
 Each Rex tab has its own editor. Workspaces currently require a local Rex
 terminal.
 
+If Rex restores a saved editor pane as an ordinary terminal after restarting,
+Neorex leaves that terminal alone and opens a working editor pane. A surviving
+Neovim server is reattached; if it has exited, a new one is started.
+
 The workspace uses one Rex terminal containing the editor, its splits and
 picker floats. The optional tree also stays inside that terminal. Rex manages
 the terminal's placement; native Neovim handles rendering and input.

@@ -71,11 +71,15 @@ function M.setup(options)
     local socket = state.socket
     if not socket then return false end
     local response = execute({ nvim, "--server", socket, "--remote-expr", "1" }, { timeout = 2 })
-    if not response.ok and state.mode == "native" and type(state.pid) == "number"
-      and execute({ "/bin/kill", "-0", tostring(state.pid) }, { timeout = 2 }).ok then
+    if response.ok then return true end
+    local probe = execute({ nvim, "--headless", "-u", "NONE", "-i", "NONE", "-l", join(runtime, "scripts/probe.lua"), socket }, { timeout = 2 })
+    assert(probe.ok, probe.stderr)
+    local listening = rex.json.decode(probe.stdout)
+    assert(type(listening) == "boolean", "Could not check the editor socket")
+    if listening then
       error("Neovim is still running but is busy or starting; retry when it is responsive", 0)
     end
-    return response.ok
+    return false
   end
   local function evaluate(state, code)
     local expression = "luaeval('" .. ("vim.json.encode(" .. code .. ")"):gsub("'", "''") .. "')"
@@ -129,20 +133,30 @@ function M.setup(options)
       for _, block in ipairs(listed.blocks or {}) do
         if block.block_id == state.block then existing = block; break end
       end
+      local running = alive(state)
       if action == "status" then
-        return { workspace = state, block = existing, running = alive(state), socket = state.socket }
+        return { workspace = state, block = existing, running = running, socket = state.socket }
+      end
+      if existing then
+        if not running then
+          existing = nil
+        elseif evaluate(state, "#vim.api.nvim_list_uis()") == 0 then
+          local process = call("com.superlogical.terminal.process", { session_id = ctx.session_id, block_id = existing.block_id, args = {} })
+          local foreground = process.foreground or process.child or {}
+          local name = foreground.name
+          if name and name ~= "nvim" and name ~= "env" and name ~= "login" and name ~= (state.nvim or nvim):match("([^/]+)$") then
+            existing = nil
+          end
+        end
       end
       if action == "close" then
-        if alive(state) then
+        if running then
           if dispatch(state, "dirty") then error("Save or discard unsaved buffers before closing the editor", 0) end
           evaluate(state, "(function() vim.schedule(function() vim.cmd('qa') end); return true end)()")
-        elseif existing then
-          call("block.close", { session_id = ctx.session_id, block_id = existing.block_id })
         end
         return
       end
       if not existing then
-        local running = alive(state)
         if not running then
           local process = call("com.superlogical.terminal.process", { session_id = ctx.session_id, block_id = ctx.block_id, args = {} })
           local cwd = process.foreground and process.foreground.cwd
